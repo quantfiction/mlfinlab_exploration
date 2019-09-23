@@ -5,7 +5,7 @@ import os
 
 
 def func():
-    print('GM say it back')
+    print('Would be really cool if this still worked')
 
 
 def tqdm_test():
