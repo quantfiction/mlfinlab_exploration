@@ -6,18 +6,23 @@ import zlib
 import pandas as pd
 import numpy as np
 from tqdm import tqdm, trange
+import os
+from dotenv import find_dotenv, load_dotenv
+
+load_dotenv(find_dotenv())
 
 
 class BitmexScraper:
 
     S3_ENDPOINT = 'https://s3-eu-west-1.amazonaws.com/public.bitmex.com/data/{}/{}.csv.gz'
 
-    def __init__(self, work=False):
+    def __init__(self, proxy=False):
         self.session = requests.Session()
-        if work:
+        if proxy:
             self.session.trust_env = False
+            HTTPS_PROXY = os.getenv('HTTPS_PROXY')
             self.proxies = {
-                'https': 'https://USMCDWNCAD90BPB@naproxy.gm.com:80'}
+                'https': HTTPS_PROXY}
             self.get_kwargs = {'proxies': self.proxies}
         else:
             self.get_kwargs = {}
