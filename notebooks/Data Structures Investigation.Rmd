@@ -1,0 +1,218 @@
+---
+jupyter:
+  jupytext:
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.1'
+      jupytext_version: 1.2.4
+  kernelspec:
+    display_name: Python 3
+    language: python
+    name: python3
+---
+
+```{python}
+# %load_ext autoreload
+# %autoreload 2
+# %autosave 0
+```
+
+```{python}
+graphics_path = '../reports/figures/'
+```
+
+```{python}
+from src.data.data_writer import ArcticReader
+```
+
+# Create Re-Sampled Bars
+
+
+## Define Sample Period
+
+```{python}
+import pandas as pd, numpy as np
+
+start = '1/1/2017'
+end = '9/18/2019'
+```
+
+## Get Average Estimates
+
+```{python}
+avg_path = '../data/interim/XBTUSD averages 11Nov2014_11Nov2014.csv'
+avg = pd.read_csv(avg_path, index_col=0, parse_dates=True)
+avg.head()
+```
+
+```{python}
+rs = avg.astype(float).resample('D').sum()
+avg_ticks = rs.loc[start:end, 'price'].mean()
+avg_contracts = rs.loc[start:end, 'size'].mean()
+print(f"Avg Ticks/Day: {avg_ticks}")
+print(f"Avg Contracts/Day: {avg_contracts}")
+```
+
+```{python}
+sns.set_style('white')
+fig, axes = plt.subplots(2, 1, figsize=(7,7))
+
+rs.loc[start:end, 'price'].plot(ax=axes[0], color='navy', lw=0.7)
+axes[0].set_title('# Ticks', fontsize=13)
+rs.loc[start:end, 'size'].plot(ax=axes[1], color='navy', lw=0.7)
+axes[1].set_title('# Contracts', fontsize=13)
+
+fig.tight_layout()
+fig.savefig(graphics_path+'XBTUSD daily averages')
+```
+
+```{python}
+rs.loc[start:end, 'price'].mean()
+```
+
+# Baseline: Time-Sampled Bars
+
+```{python}
+from src.data import cleaning
+```
+
+```{python}
+xbt_1m = pd.read_csv('../data/raw/XBTUSD_1m.csv', parse_dates=True, index_col=0)
+xbt_1d = cleaning.resample_ohlc(cleaning.clean_ohlc(xbt_1m))
+daily_sample = xbt_1d.loc[start:end]
+```
+
+## Calculate Returns
+
+```{python}
+daily_returns = np.log(daily_sample['Close']).diff().dropna()
+```
+
+# Tick Bars
+
+```{python}
+from mlfinlab.data_structures import standard_data_structures, imbalance_data_structures
+```
+
+```{python}
+file_path = '../data/raw/XBTUSD mlfinlab format 11NOV2014_21SEP2019.csv'
+```
+
+```{python}
+tick_thresh = int(avg_ticks)
+tick_bars = standard_data_structures.get_tick_bars(file_path, threshold=tick_thresh, verbose=True)
+```
+
+## Tick Returns
+
+```{python}
+tick_returns = np.log(tick_bars['close']).diff().dropna()
+```
+
+# Volume Bars
+
+```{python}
+volume_thresh = int(avg_contracts)
+volume_bars = standard_data_structures.get_volume_bars(file_path, threshold=volume_thresh, verbose=True)
+```
+
+## Volume Returns
+
+```{python}
+volume_returns = np.log(volume_bars['close']).diff().dropna()
+```
+
+# "Dollar" Bars
+The package is going to calculate this wrong but :shrug:
+
+```{python}
+avg_dollar = rs.prod(axis=1).median()
+thresh_dollar = int(avg_dollar)
+dollar_bars = standard_data_structures.get_dollar_bars(file_path, threshold=thresh_dollar, verbose=True)
+```
+
+## Dollar Returns
+
+```{python}
+dollar_returns = np.log(dollar_bars['close']).diff().dropna()
+```
+
+# Tick Imbalance Bars
+
+```{python}
+tick_imbalance_bars = imbalance_data_structures.get_tick_imbalance_bars(file_path, num_prev_bars=10, exp_num_ticks_init=tick_thresh)
+```
+
+# Plot Results
+
+```{python}
+import matplotlib as mpl, matplotlib.pyplot as plt
+import seaborn as sns
+from statsmodels.graphics.gofplots import qqplot
+
+# %matplotlib inline
+mpl.rcParams['savefig.dpi'] = 300
+```
+
+```{python}
+sns.set_style('whitegrid')
+```
+
+```{python}
+fig, axes = plt.subplots(2, 2, figsize=(12,7), sharey=True, sharex=True)
+
+fit = False
+
+qqplot(daily_returns.loc['2018':], fit=False, line='s', ax=axes[0,0], color='navy')
+axes[0,0].set_title('Daily Bars', fontsize=13)
+axes[0,0].set_xlabel('')
+axes[0,0].set_ylabel('Log Returns')
+
+qqplot(tick_returns.loc['2018':], fit=False, line='s', ax=axes[1,0], color='navy')
+axes[1,0].set_title('Tick Bars', fontsize=13)
+axes[1,0].set_xlabel('Theoretical (Normal) Quantiles')
+axes[1,0].set_ylabel('Log Returns')
+
+qqplot(volume_returns.loc['2018':], fit=False, line='s', ax=axes[0,1], color='navy')
+axes[0,1].set_title('Volume Bars', fontsize=13)
+axes[0,1].set_xlabel('')
+axes[0,1].set_ylabel('')
+
+qqplot(dollar_returns.loc['2018':], fit=False, line='s', ax=axes[1,1], color='navy')
+axes[1,1].set_title('"Dollar" Bars', fontsize=13)
+axes[1,1].set_xlabel('Theoretical (Normal) Quantiles')
+axes[1,1].set_ylabel('')
+
+fig.tight_layout()
+fig.savefig(graphics_path + 'XBTUSD Bar Type Comparison')
+```
+
+```{python}
+fig, axes = plt.subplots(2, 2, figsize=(12,7), sharey=True, sharex=True)
+
+fit = False
+
+qqplot(daily_returns.loc['2018':], fit=False, line='s', ax=axes[0,0], color='navy')
+axes[0,0].set_title('Daily Bars', fontsize=13)
+axes[0,0].set_xlabel('')
+axes[0,0].set_ylabel('Log Returns')
+
+qqplot(tick_returns.loc['2018':], fit=False, line='s', ax=axes[1,0], color='navy')
+axes[1,0].set_title('Tick Bars', fontsize=13)
+axes[1,0].set_xlabel('Theoretical (Normal) Quantiles')
+axes[1,0].set_ylabel('Log Returns')
+
+qqplot(volume_returns.loc['2018':], fit=False, line='s', ax=axes[0,1], color='navy')
+axes[0,1].set_title('Volume Bars', fontsize=13)
+axes[0,1].set_xlabel('')
+axes[0,1].set_ylabel('')
+
+qqplot(dollar_returns.loc['2018':], fit=False, line='s', ax=axes[1,1], color='navy')
+axes[1,1].set_title('"Dollar" Bars', fontsize=13)
+axes[1,1].set_xlabel('Theoretical (Normal) Quantiles')
+axes[1,1].set_ylabel('')
+
+fig.tight_layout()
+fig.savefig(graphics_path + 'XBTUSD Bar Type Comparison')
+```
