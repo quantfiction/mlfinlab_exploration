@@ -193,13 +193,19 @@ class ArcticHandler:
         filename = f'{symbol} mlfinlab format {start_str}_{end_str}.csv' if filename is None else filename
         savepath = os.path.join(path, filename)
 
+        # Delete existing file if there is one
+        if os.path.exists(savepath):
+            os.remove(savepath)
+
+        header = True
         for i in trange(len(dates[:-1])):
             chunk_start = dates[i]
             chunk_end = dates[i+1]
             chunk = self.get_arctic_chunk(
                 symbol, chunk_start, chunk_end)
             chunk = self.format_chunk(chunk, pair)
-            chunk.to_csv(savepath, mode='a', header=False)
+            chunk.to_csv(savepath, mode='a', header=header, index=False)
+            header = False
 
     def get_arctic_chunk(self, symbol: str, start: str, end: str):
         chunk_range = make_date_range(start, end)
@@ -216,12 +222,14 @@ class ArcticHandler:
             symbol_col (str): the column in the chunk to filter on
         """
         chunk = chunk[chunk['symbol'] == symbol]
-        reformat = (
+        formatted = (
             chunk
             .drop(['symbol', 'side'], axis='columns')
             [['price', 'size']]
+            .reset_index()
         )
-        return reformat
+        formatted.columns = ['date_time', 'price', 'volume']
+        return formatted
 
 
 def make_date_range(start, end):
