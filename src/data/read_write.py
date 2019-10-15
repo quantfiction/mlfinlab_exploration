@@ -128,18 +128,31 @@ class BitmexScraper:
             lib.update(channel, df, upsert=True)
 
 
-class ArcticReader:
+class ArcticHandler:
     """
     Reads in data from an arctic data store
 
-    Args
-        host (str): arctic hostname
+    param hostname: where arctic data store is hosted
+    param library: arctic library where data is stored
     """
 
-    def __init__(self, hostname='localhost'):
+    def __init__(self, library:str, hostname='localhost'):
         self.arctic = arctic.Arctic(hostname)
+        self.library = self.arctic[library]
 
-    def calc_averages(self, library: str, item: str, symbol: str, start, end, chunk_size: str, rs_freq: str, save_csv=False):
+    def calc_averages(self, symbol:str, pair: str, start, end, chunk_size: str, rs_freq: str, save_csv=False):
+        """
+        Pulls data between specified date range from arctic and writes to .csv
+        in chunks
+
+        :param symbol: name of the arctic library
+        :param pair: name of the trading pair
+        :param start: start date for sample
+        :param end: end date for sample
+        :param chunk_size: size of chunk to read from arctic on each iteration (7D)
+        :param rs_freq: the frequency to gather statistics on (30T, 4h, 1D)
+        :param save_csv: where to store final .csv file
+        """
         dates = pd.date_range(start, end, freq=chunk_size)
         dates_rs = pd.date_range(start, end, freq=rs_freq)
         agg_dict = {'price': pd.Series.count, 'size': sum}
@@ -149,8 +162,8 @@ class ArcticReader:
             chunk_start = dates[i]
             chunk_end = dates[i+1]
             chunk = self.get_arctic_chunk(
-                library, item, chunk_start, chunk_end)
-            chunk = self.format_chunk(chunk, symbol)
+                symbol, chunk_start, chunk_end)
+            chunk = self.format_chunk(chunk, pair)
             chunk_avg = chunk.resample(rs_freq).agg(agg_dict)
             df.loc[chunk_avg.index] = chunk_avg
 
@@ -162,25 +175,44 @@ class ArcticReader:
                 f'../data/interim/{symbol} averages {start_str}_{end_str}.csv')
         return df
 
-    def write_csv(self, library: str, item: str, symbol: str, start, end, chunk_size: str):
+    def write_csv(self, symbol: str, pair: str, start:str, end:str, chunk_size: str, path=None, filename=None):
+        """
+        Pulls data between specified date range from arctic and writes to .csv
+        in chunks
+
+        :param symbol: name of the arctic library
+        :param pair: name of the trading pair
+        :param start: start date for sample
+        :param end: end date for sample
+        :param chunk_size: size of chunk to read from arctic on each iteration
+        :param path: where to store final .csv file
+        """
         dates = pd.date_range(start, end, freq=chunk_size)
         str_format = '%m%b%Y'
         start_str = pd.to_datetime(start).strftime(str_format).upper()
         end_str = pd.to_datetime(end).strftime(str_format).upper()
-        filename = f'../data/raw/{symbol} mlfinlab format {start_str}_{end_str}.csv'
 
+        path = '../data/raw' if path is None else path
+        filename = f'{symbol} mlfinlab format {start_str}_{end_str}.csv' if filename is None else filename
+        savepath = os.path.join(path, filename)
+
+        # Delete existing file if there is one
+        if os.path.exists(savepath):
+            os.remove(savepath)
+
+        header = True
         for i in trange(len(dates[:-1])):
             chunk_start = dates[i]
             chunk_end = dates[i+1]
             chunk = self.get_arctic_chunk(
-                library, item, chunk_start, chunk_end)
-            chunk = self.format_chunk(chunk, symbol)
-            chunk.to_csv(filename, mode='a', header=False)
+                symbol, chunk_start, chunk_end)
+            chunk = self.format_chunk(chunk, pair)
+            chunk.to_csv(savepath, mode='a', header=header, index=False)
+            header = False
 
-    def get_arctic_chunk(self, library: str, item: str, start: str, end: str):
+    def get_arctic_chunk(self, symbol: str, start: str, end: str):
         chunk_range = make_date_range(start, end)
-        lib = self.arctic[library]
-        chunk = lib.read(item, chunk_range=chunk_range)
+        chunk = self.library.read(symbol, chunk_range=chunk_range)
         return chunk
 
     @staticmethod
@@ -193,12 +225,14 @@ class ArcticReader:
             symbol_col (str): the column in the chunk to filter on
         """
         chunk = chunk[chunk['symbol'] == symbol]
-        reformat = (
+        formatted = (
             chunk
             .drop(['symbol', 'side'], axis='columns')
             [['price', 'size']]
+            .reset_index()
         )
-        return reformat
+        formatted.columns = ['date_time', 'price', 'volume']
+        return formatted
 
 
 def make_date_range(start, end):
@@ -213,20 +247,21 @@ def write_test():
 
 
 if __name__ == '__main__':
+    pass
 
-    library = 'bitmex-s3-chunk'
-    item = 'trade'
-    symbol = 'XBTUSD'
-    start = '11/22/2014'
-    end = '9/21/2017'
-    chunk_size = '7d'
-    rs_freq = '1T'
+#     library = 'bitmex-s3-chunk'
+#     item = 'trade'
+#     symbol = 'XBTUSD'
+#     start = '11/22/2014'
+#     end = '9/21/2017'
+#     chunk_size = '7d'
+#     rs_freq = '1T'
 
-    arctic_reader = ArcticReader()
-    avg = arctic_reader.calc_averages(
-        library=library, item=item, symbol=symbol, start=start, end=end,
-        chunk_size=chunk_size, rs_freq=rs_freq, save_csv=True
-    )
-    avg = None  # clear memory
+#     arctic_reader = ArcticReader()
+#     avg = arctic_reader.calc_averages(
+#         library=library, item=item, symbol=symbol, start=start, end=end,
+#         chunk_size=chunk_size, rs_freq=rs_freq, save_csv=True
+#     )
+#     avg = None  # clear memory
     # arctic_reader.write_csv(library=library, item=item, symbol=symbol,
     #                         start=start, end=end, chunk_size=chunk_size)
