@@ -20,17 +20,16 @@ def resample_ohlc(ohlc_df, freq='D'):
     return resample_df
 
 
-def get_aggregated_trades(trades, size_col='size'):
-    trades.rename(columns={size_col: 'size'}, inplace=True)
-    trades['price_size'] = trades['price'].multiply(trades['size'])
+def get_aggregated_trades(trades, price_col='price', size_col='size'):
+    trades['price_size'] = trades[price_col].multiply(trades[size_col])
     agg = (
         trades
         .groupby([trades.index, trades['side']])
-        .agg({'size': sum, 'price_size': sum})
+        .agg({size_col: sum, 'price_size': sum})
         .reset_index()
         .set_index('date')
     )
-    agg['price'] = agg['price_size'].divide(agg['size'])
+    agg[price_col] = agg['price_size'].divide(agg[size_col])
     return agg
 
 

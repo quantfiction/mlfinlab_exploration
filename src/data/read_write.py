@@ -1,3 +1,4 @@
+from cleaning import get_aggregated_trades
 import arctic
 from arctic.date import DateRange
 import requests
@@ -28,7 +29,7 @@ class BitmexScraper:
             self.get_kwargs = {}
 
     @staticmethod
-    def format_trade_df(df):
+    def format_trade_df(df, aggregate=False):
         df = (
             df
             .set_index('timestamp')
@@ -36,6 +37,8 @@ class BitmexScraper:
             .dropna(how='all')
             .astype({'symbol': str, 'side': str, 'size': int, 'price': float})
         )
+        if aggregate:
+            df = get_aggregated_trades(df)
         return df
 
     @staticmethod
